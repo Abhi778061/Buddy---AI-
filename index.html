@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Buddy AI Assistant</title>
+<style>
+  /* Basic reset */
+  body, html {
+    margin: 0; padding: 0; height: 100%;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #f7f9fc;
+    display: flex; flex-direction: column;
+  }
+  header {
+    background: #0a9396;
+    color: white;
+    font-size: 24px;
+    text-align: center;
+    padding: 20px;
+    font-weight: bold;
+  }
+  #chat-container {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .message {
+    max-width: 70%;
+    padding: 12px 16px;
+    border-radius: 15px;
+    font-size: 16px;
+    line-height: 1.3;
+    animation: fadeIn 0.3s ease forwards;
+    opacity: 0;
+    word-wrap: break-word;
+  }
+  .message.user {
+    background-color: #94d2bd;
+    align-self: flex-end;
+    border-bottom-right-radius: 0;
+    color: #1b4332;
+  }
+  .message.bot {
+    background-color: #e9ecef;
+    align-self: flex-start;
+    border-bottom-left-radius: 0;
+    color: #212529;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+  }
+  @keyframes fadeIn {
+    to {opacity: 1;}
+  }
+  #input-area {
+    display: flex;
+    padding: 15px 20px;
+    background: white;
+    border-top: 1px solid #ccc;
+  }
+  #user-input {
+    flex: 1;
+    font-size: 16px;
+    padding: 12px 20px;
+    border: 1.5px solid #ccc;
+    border-radius: 30px;
+    outline: none;
+    transition: border-color 0.3s;
+  }
+  #user-input:focus {
+    border-color: #0a9396;
+  }
+  #send-btn, #mic-btn {
+    background: #0a9396;
+    border: none;
+    color: white;
+    font-size: 20px;
+    margin-left: 10px;
+    padding: 0 16px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.3s ease;
+  }
+  #send-btn:hover, #mic-btn:hover {
+    background: #005f60;
+  }
+  #mic-btn {
+    background: #ee6c4d;
+  }
+  #mic-btn.listening {
+    animation: pulse 1.5s infinite;
+    box-shadow: 0 0 15px #ee6c4d;
+  }
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 15px #ee6c4d; }
+    50% { box-shadow: 0 0 30px #ee6c4d; }
+  }
+  footer {
+    background: #0a9396;
+    color: white;
+    text-align: center;
+    padding: 10px;
+    font-size: 14px;
+  }
+</style>
+</head>
+<body>
+  <header>Buddy AI Assistant</header>
+  <div id="chat-container"></div>
+  <div id="input-area">
+    <input
+      id="user-input"
+      type="text"
+      placeholder="Type your message here..."
+      autocomplete="off"
+    />
+    <button id="mic-btn" title="Voice input 🎙">
+      🎤
+    </button>
+    <button id="send-btn" title="Send message">➤</button>
+  </div>
+  <footer>Created by Mr. Abhi</footer>
+
+<script>
+const chatContainer = document.getElementById("chat-container");
+  const userInput = document.getElementById("user-input");
+  const sendBtn = document.getElementById("send-btn");
+  const micBtn = document.getElementById("mic-btn");
+
+  function addMessage(text, sender) {
+    const msg = document.createElement("div");
+    msg.classList.add("message", sender);
+    msg.textContent = text;
+    chatContainer.appendChild(msg);
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+
+    // Speak bot messages
+    if (sender === "bot" && "speechSynthesis" in window) {
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = "en-US";
+      utterance.pitch = 1;
+      utterance.rate = 1;
+      speechSynthesis.speak(utterance);
+    }
+    // Optionally, you can emit a custom event here for further integration
+    // For example: document.dispatchEvent(new CustomEvent('chatMessageAdded', { detail: { text, sender } }));
+    msg.querySelectorAll("a").forEach(link => {
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+    });
+  }
+
+  async function sendMessage() {
+    const message = userInput.value.trim();
+    if (!message) return;
+    addMessage(message, "user");
+    userInput.value = "";
+    userInput.disabled = true;
+    sendBtn.disabled = true;
+
+    // Show bot typing...
+    const typingMsg = document.createElement("div");
+    typingMsg.classList.add("message", "bot");
+    typingMsg.textContent = "Typing...";
+    chatContainer.appendChild(typingMsg);
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+
+    try {
+      const response = await fetch("http://127.0.0.1:5000/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message }),
+      });
+      const data = await response.json();
+      chatContainer.removeChild(typingMsg);
+      if (data.action === "open_url" && data.url) {
+        // Open the URL in a new tab/window
+        window.open(data.url, '_blank');
+        addMessage(data.response, "bot");
+      } else if (data.response) {
+        addMessage(data.response, "bot");
+      } else {
+        addMessage("Oops! No response from bot.", "bot");
+      }
+    } catch (error) {
+      chatContainer.removeChild(typingMsg);
+      addMessage("Error connecting to backend.", "bot");
+    } finally {
+      userInput.disabled = false;
+      sendBtn.disabled = false;
+      userInput.focus();
+    }
+  }
+
+  userInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") sendMessage();
+  });
+
+  sendBtn.addEventListener("click", sendMessage);
+
+  let recognition;
+  if ("SpeechRecognition" in window || "webkitSpeechRecognition" in window) {
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+    recognition = new SpeechRecognition();
+    recognition.lang = "en-US";
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+      micBtn.classList.add("listening");
+    };
+    recognition.onend = () => {
+      micBtn.classList.remove("listening");
+    };
+    recognition.onresult = (event) => {
+      const speech = event.results[0][0].transcript;
+      userInput.value = speech;
+      sendMessage();
+    };
+
+    micBtn.addEventListener("click", () => {
+      if (micBtn.classList.contains("listening")) {
+        recognition.stop();
+      } else {
+        recognition.start();
+      }
+    });
+  } else {
+    micBtn.style.display = "none";
+  }
+</script>
+</body>
+</html>
